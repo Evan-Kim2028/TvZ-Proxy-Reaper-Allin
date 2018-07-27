@@ -7,12 +7,12 @@ from sc2.constants import COMMANDCENTER, SCV, SUPPLYDEPOT, BARRACKS, ORBITALCOMM
 , CYCLONE, BARRACKSREACTOR, MARINE, BARRACKSTECHLAB
 from sc2.ids.ability_id import UPGRADETOORBITAL_ORBITALCOMMAND, CALLDOWNMULE_CALLDOWNMULE, BUILD_REACTOR_BARRACKS, BUILD_TECHLAB_BARRACKS
 
+#adding unnesecary comment
 class TerranBot(sc2.BotAI):
     async def on_step(self, iteration):
         """Controls async function executions)"""
         await self.distribute_workers()
         await self.build_peon()
-
 
     async def build_peon(self):
         """Manages peon (SCV) prodcution from Command Centers and Orbital Command Centers in each expansion."""
