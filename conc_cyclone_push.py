@@ -13,31 +13,73 @@ class TerranBot(sc2.BotAI):
         """Controls async function executions)"""
         await self.distribute_workers()
         await self.build_peon()
+        await self.build_supply()
+        await self.build_gas()
+        await self.build_rax()
+        await self.manage_bases_oc()
+        await self.manage_bases_cc()
+        await self.research_upgrade_addon()
 
     async def build_peon(self):
         """Manages peon (SCV) prodcution from Command Centers and Orbital Command Centers in each expansion."""
-        for cc in self.units(COMMANDCENTER).is_idle:
-                await self.do(cc.train(SCV))
+        for cc in self.units(COMMANDCENTER).ready:
+            if self.units(BARRACKS).exists:
+                break
+            else:
+                if self.can_afford(SCV) and not self.already_pending(SCV):
+                    await self.do(cc.train(SCV))
 
     async def build_supply(self):
         """Manages Supply Depot production to prevent supply blocks."""
-        for depot in self.units(SUPPLYDEPOT):
-            if self.can_afford(SUPPLYDEPOT) and not self.already_pending(SUPPLYDEPOT):
-                if supply_left < 2:
-                    await self.build(depot, near=self.units(COMMANDCENTER))
+        if self.supply_left < 4 and self.can_afford(SUPPLYDEPOT):
+            if not self.already_pending(SUPPLYDEPOT):
+                await self.build(SUPPLYDEPOT, near=self.units(COMMANDCENTER).first)
+    
+    async def build_gas(self):
+        """Builds refineries for gas collection."""
+        for cc in self.units(COMMANDCENTER):
+            if self.already_pending(BARRACKS) and self.units(REFINERY).amount < 1:
+                gas = self.state.vespene_geyser.closer_than(15.0, cc)
+                for gas in gas:
+                    if self.can_afford(REFINERY) and not self.already_pending(REFINERY):
+                        worker = self.select_build_worker(gas.position)
+                        await self.do(worker.build(REFINERY, gas))
+            #Need to add 2nd gas timing
 
     async def build_rax(self):
         """Build and control building location of all Barracks."""
+        if self.units(SUPPLYDEPOT).exists:
+            if self.can_afford(BARRACKS) and not self.already_pending(BARRACKS) and self.units(BARRACKS).amount < 1:
+                await self.build(BARRACKS, near=self.units(SUPPLYDEPOT).first)
 
+    async def manage_bases_oc(self):
+        """Controls OC upgrading, OC mule deployment, OC scan."""
+        if self.units(BARRACKS).exists and self.units(COMMANDCENTER).exists:
+            if self.can_afford(ORBITALCOMMAND) and not self.already_pending(ORBITALCOMMAND):
+                await self.do(self.units(COMMANDCENTER).ready[0](UPGRADETOORBITAL_ORBITALCOMMAND))
+        #Calls down Mule
+        for oc in self.units(ORBITALCOMMAND).ready:
+            abilities = await self.get_available_abilities(oc)
+            if CALLDOWNMULE_CALLDOWNMULE in abilities:
+                mf = self.state.mineral_field.closest_to(oc)
+                await self.do(oc(CALLDOWNMULE_CALLDOWNMULE, mf))
 
     async def manage_bases_cc(self):
-        """Controls Base expansion, OC mule deployment, OC scan."""
-
-
+        """Controls expanding to future bases."""
+        if self.units(ORBITALCOMMAND).exists:
+            if self.can_afford(COMMANDCENTER) and not self.already_pending(COMMANDCENTER):
+                if self.units(REFINERY).amount < 1:
+                    await self.expand_now()
+   
     async def research_upgrade_addon(self):
         """Manages buildng addons and researchs upgrades from tech lab."""
+        for rax in self.units(BARRACKS):
+            abilities = await self.get_available_abilities(rax)
+            if self.can_afford(BARRACKSREACTOR) and self.units(BARRACKSREACTOR).amount < 1:
+                    if BUILD_REACTOR_BARRACKS in abilities:
+                        await self.do(rax(BUILD_REACTOR_BARRACKS))
 
-
+            
     async def build_factory(self):
         """Build and control building location of all Factories."""
 
