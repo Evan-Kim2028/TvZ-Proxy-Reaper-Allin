@@ -16,7 +16,7 @@ class TerranBot(sc2.BotAI):
 
     async def build_peon(self):
         """Manages peon (SCV) prodcution from Command Centers and Orbital Command Centers in each expansion."""
-        for cc in self.units(COMMANDCENTER).ready:
+        for cc in self.units(COMMANDCENTER).is_idle:
                 await self.do(cc.train(SCV))
 
     async def build_supply(self):
@@ -25,7 +25,6 @@ class TerranBot(sc2.BotAI):
             if self.can_afford(SUPPLYDEPOT) and not self.already_pending(SUPPLYDEPOT):
                 if supply_left < 2:
                     await self.build(depot, near=self.units(COMMANDCENTER))
-
 
     async def build_rax(self):
         """Build and control building location of all Barracks."""
