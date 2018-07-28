@@ -22,18 +22,16 @@ class TerranBot(sc2.BotAI):
 
     async def build_peon(self):
         """Manages peon (SCV) prodcution from Command Centers and Orbital Command Centers in each expansion."""
-        for cc in self.units(COMMANDCENTER).ready:
-            if self.units(BARRACKS).exists:
-                break
-            else:
-                if self.can_afford(SCV) and not self.already_pending(SCV):
-                    await self.do(cc.train(SCV))
+        for cc in self.units(COMMANDCENTER).ready.noqueue:
+            if self.can_afford(SCV) and not self.already_pending(SCV) and not self.units(BARRACKS).ready.exists:
+                await self.do(cc.train(SCV))
 
     async def build_supply(self):
         """Manages Supply Depot production to prevent supply blocks."""
         if self.supply_left < 4 and self.can_afford(SUPPLYDEPOT):
             if not self.already_pending(SUPPLYDEPOT):
-                await self.build(SUPPLYDEPOT, near=self.units(COMMANDCENTER).first)
+                for cc in self.units(COMMANDCENTER):
+                    await self.build(SUPPLYDEPOT, near=cc.position.towards(self.game_info.map_center, 7))
     
     async def build_gas(self):
         """Builds refineries for gas collection."""
@@ -54,9 +52,10 @@ class TerranBot(sc2.BotAI):
 
     async def manage_bases_oc(self):
         """Controls OC upgrading, OC mule deployment, OC scan."""
-        if self.units(BARRACKS).exists and self.units(COMMANDCENTER).exists:
+        if self.units(BARRACKS).exists and self.units(COMMANDCENTER).ready.exists:
             if self.can_afford(ORBITALCOMMAND) and not self.already_pending(ORBITALCOMMAND):
-                await self.do(self.units(COMMANDCENTER).ready[0](UPGRADETOORBITAL_ORBITALCOMMAND))
+                await self.do(self.units(COMMANDCENTER)[0](UPGRADETOORBITAL_ORBITALCOMMAND))
+
         #Calls down Mule
         for oc in self.units(ORBITALCOMMAND).ready:
             abilities = await self.get_available_abilities(oc)
@@ -67,9 +66,11 @@ class TerranBot(sc2.BotAI):
     async def manage_bases_cc(self):
         """Controls expanding to future bases."""
         if self.units(ORBITALCOMMAND).exists:
+            print("OC exists")
             if self.can_afford(COMMANDCENTER) and not self.already_pending(COMMANDCENTER):
-                if self.units(REFINERY).amount < 1:
-                    await self.expand_now()
+                location = await self.get_next_expansion()
+                print("time to build CC")
+                err = await self.build(COMMANDCENTER, near=location)
    
     async def research_upgrade_addon(self):
         """Manages buildng addons and researchs upgrades from tech lab."""
