@@ -28,6 +28,9 @@ class ProxyReaperBot(sc2.BotAI):
         await self.move_scv()
         await self.build_rax()
         await self.build_gas()
+        await self.build_scv()
+        await self.rax_production()
+        await self.upgrade_to_oc()
         print(self.combinedActions)
         await self.do_actions(self.combinedActions)
         self.combinedActions = []
@@ -43,16 +46,16 @@ class ProxyReaperBot(sc2.BotAI):
             print("need to move scv to 2nd proxy location")
             proxy_location = self.game_info.map_center.towards(self.enemy_start_locations[0], 30)
             #Fixed action looping continuously by adding 'and self.units(REFINERY).amount < 1' to if statement. 
-            #Loop stops aftter refinery gets built.
+            #Loop behavior stops aftter refinery gets built.
             self.combinedActions.append(ws.move(proxy_location))
             pass
 
-
     async def build_depot(self):
         ws = self.units(SCV).find_by_tag(self.proxy_worker_tag_depot)
-        if self.can_afford(SUPPLYDEPOT) and not self.already_pending(SUPPLYDEPOT) and self.supply_left < 4:
+        if self.can_afford(SUPPLYDEPOT) and not self.already_pending(SUPPLYDEPOT) and self.supply_left < 5:
             loc = await self.find_placement(SUPPLYDEPOT, ws.position)
             self.combinedActions.append(ws.build(SUPPLYDEPOT, loc))
+            #Issue - Sometimes SCV builds depot outside of ramp and the first rax builds too slowly. 
 
     async def build_rax(self):
         """Builds proxy rax in a location near the opponent."""
@@ -66,12 +69,11 @@ class ProxyReaperBot(sc2.BotAI):
                 self.combinedActions.append(proxy_worker.build(BARRACKS, pos))
 
             #2nd rax gets built by scv that finished building the supply depot. Currently does not build 2nd rax
-            if self.can_afford(BARRACKS) and self.units(BARRACKS).amount >= 1:
+            if self.can_afford(BARRACKS) and self.units(BARRACKS).amount < 2:
                 proxy_worker2 = self.units(SCV).find_by_tag(self.proxy_worker_tag_depot)
                 pos = await self.find_placement(BARRACKS, near=self.game_info.map_center.towards(self.enemy_start_locations[0], 25))
                 self.combinedActions.append(proxy_worker2.build(BARRACKS, pos))
-
-                    
+        
     async def build_gas(self):
         """Builds refineries for gas collection."""
         for cc in self.units(COMMANDCENTER):
@@ -83,12 +85,55 @@ class ProxyReaperBot(sc2.BotAI):
                         if ws:
                             w = ws.furthest_to(ws.center)
                             #worker = self.select_build_worker(gas.position)
-                            self.combinedActions.append(w.build(REFINERY, gas))           
+                            self.combinedActions.append(w.build(REFINERY, gas)) 
+                    if self.can_afford(REFINERY) and not self.already_pending(REFINERY) and self.units(REFINERY).amount < 2:
+                        ws = self.workers.gathering
+                        if ws:
+                            w = ws.furthest_to(ws.center)
+                            self.combinedActions.append(w.build(REFINERY, gas))          
+
+    async def build_scv(self):
+        """Manage SCV Production from CCs and OCs."""
+        for cc in self.units(COMMANDCENTER).ready.noqueue:
+            #SCV Production from CC
+            if self.units(SCV).amount < 15:
+                if self.can_afford(SCV) and not self.already_pending(SCV):
+                    #Squeeze 1 scv out before 2nd rax/2nd gas are put down.
+                    if self.units(BARRACKS).amount >= 1:
+                        if self.already_pending(REFINERY):
+                            pass
+                        else:
+                            self.combinedActions.append(cc.train(SCV))                        
+                    if self.units(BARRACKS).amount >= 2 and not self.already_pending(REAPER) and not self.already_pending(SUPPLYDEPOT): # and not self.already_pending(REFINERY)
+                        self.combinedActions.append(cc.train(SCV))
+            #SCV PRoduction from OC
+        for oc in self.units(ORBITALCOMMAND).ready.noqueue:
+            if 15 < self.units(SCV).amount < 22:
+                if self.can_afford(SCV) and not self.already_pending(SCV):
+                    self.combinedActions.append(oc.train(SCV))
+
+    async def rax_production(self):
+        for rax in self.units(BARRACKS).ready.noqueue:
+            if self.can_afford(REAPER) and not self.already_pending(REAPER):
+                self.combinedActions.append(rax.train(REAPER))
+
+    async def upgrade_to_oc(self):
+        """Controls upgrade to OC, mule deployment, and scan usage."""
+        if self.units(BARRACKS).exists and self.units(COMMANDCENTER).ready.exists:
+            if self.units(BARRACKS).amount >= 2 and not self.already_pending(ORBITALCOMMAND) and self.units(SCV).amount >= 15:
+                if self.can_afford(ORBITALCOMMAND) and not self.already_pending(ORBITALCOMMAND):
+                    self.combinedActions.append(self.units(COMMANDCENTER)[0](UPGRADETOORBITAL_ORBITALCOMMAND))
+                    pass
+                #Mule drop
+        for oc in self.units(ORBITALCOMMAND).ready:
+            abilities = await self.get_available_abilities(oc)
+            if CALLDOWNMULE_CALLDOWNMULE in abilities:
+                mf = self.state.mineral_field.closest_to(oc)
+                self.combinedActions.append(oc(CALLDOWNMULE_CALLDOWNMULE, mf))
 
 
-                #Issue - when scv finishes making depot, scv needs to be sent to first rax location to build a 2nd rax. 
-                #Issue - Start gas as soon as the rax starts.
-                #Issue - SCV Production is not constant, but required.
+
+
     
 
 
@@ -260,7 +305,7 @@ def main():
     # Multiple difficulties for enemy bots available https://github.com/Blizzard/s2client-api/blob/ce2b3c5ac5d0c85ede96cef38ee7ee55714eeb2f/include/sc2api/sc2_gametypes.h#L30
     sc2.run_game(sc2.maps.get("(2)CatalystLE"), [
         Bot(Race.Terran, ProxyReaperBot()),
-        Computer(Race.Zerg, Difficulty.VeryHard)
+        Computer(Race.Zerg, Difficulty.Medium)
     ], realtime=False)
 
 if __name__ == '__main__':
