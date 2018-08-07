@@ -24,15 +24,18 @@ class ProxyReaperBot(sc2.BotAI):
         await self.build_depot()
         await self.move_scv()
         await self.build_rax()
-#        await self.build_gas()
+        await self.build_gas()
+        #looping through too fast. look into do_actions and figure out whats going on. Maybe don't use combinedActions?
+        print(self.combinedActions)
         await self.do_actions(self.combinedActions)
+        self.combinedActions = []
 
     async def move_scv(self):
             if self.units(SUPPLYDEPOT).ready and self.can_afford(BARRACKS):
                 pass
             else:
                 proxy_location = self.game_info.map_center.towards(self.enemy_start_locations[0], 25)
-                self.combinedActions.append(self.proxy_worker.move(proxy_location))
+                self.combinedActions.append(self.proxy_worker.move(self.proxy_location))
 
     async def build_depot(self):
         if self.can_afford(SUPPLYDEPOT) and not self.already_pending(SUPPLYDEPOT) and self.supply_left < 4:
@@ -54,15 +57,15 @@ class ProxyReaperBot(sc2.BotAI):
                 pos = await self.find_placement(BARRACKS, near=self.game_info.map_center.towards(self.enemy_start_locations[0], 22))
                 self.combinedActions.append(proxy_worker.build(BARRACKS, pos))
                     
-#    async def build_gas(self):
-#        """Builds refineries for gas collection."""
-#        for cc in self.units(COMMANDCENTER):
-#            if self.already_pending(BARRACKS):
-#                gas = self.state.vespene_geyser.closer_than(15.0, cc)
-#                for gas in gas:
-#                    if self.can_afford(REFINERY) and not self.already_pending(REFINERY) and self.units(REFINERY).amount < 1:
-#                       worker = self.select_build_worker(gas.position)
-#                        self.combinedActions.append(self.do(worker.build(REFINERY, gas)))            
+    async def build_gas(self):
+        """Builds refineries for gas collection."""
+        for cc in self.units(COMMANDCENTER):
+            if self.already_pending(BARRACKS):
+                gas = self.state.vespene_geyser.closer_than(15.0, cc)
+                for gas in gas:
+                    if self.can_afford(REFINERY) and not self.already_pending(REFINERY) and self.units(REFINERY).amount < 1:
+                        worker = self.select_build_worker(gas.position)
+                        self.combinedActions.append(worker.build(REFINERY, gas))           
 
 
                 #Issue - when scv finishes making depot, scv needs to be sent to first rax location to build a 2nd rax. 
