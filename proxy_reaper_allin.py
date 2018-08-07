@@ -19,32 +19,40 @@ class ProxyReaperBot(sc2.BotAI):
     async def on_step(self, iteration):
         if iteration == 0:
             self.proxy_worker = self.units(SCV).random
+            #Change from something other then random?
+            self.proxy_worker_depot = self.units(SCV).random
             self.proxy_worker_tag = self.proxy_worker.tag
+            self.proxy_worker_tag_depot = self.proxy_worker_depot.tag
         await self.distribute_workers()
         await self.build_depot()
         await self.move_scv()
         await self.build_rax()
         await self.build_gas()
-        #looping through too fast. look into do_actions and figure out whats going on. Maybe don't use combinedActions?
         print(self.combinedActions)
         await self.do_actions(self.combinedActions)
         self.combinedActions = []
 
     async def move_scv(self):
-            if self.units(SUPPLYDEPOT).ready and self.can_afford(BARRACKS):
-                pass
-            else:
-                proxy_location = self.game_info.map_center.towards(self.enemy_start_locations[0], 25)
-                self.combinedActions.append(self.proxy_worker.move(self.proxy_location))
+        if not self.already_pending(BARRACKS) and not self.units(SUPPLYDEPOT).amount >= 1:
+            proxy_location = self.game_info.map_center.towards(self.enemy_start_locations[0], 30)
+            self.combinedActions.append(self.proxy_worker.move(proxy_location))
+            pass
+        #2nd scv goes to proxy location in preparation to build 2nd rax. 
+        if self.units(SUPPLYDEPOT).ready.exists and self.units(REFINERY).amount < 1:
+            ws = self.units(SCV).find_by_tag(self.proxy_worker_tag_depot)
+            print("need to move scv to 2nd proxy location")
+            proxy_location = self.game_info.map_center.towards(self.enemy_start_locations[0], 30)
+            #Fixed action looping continuously by adding 'and self.units(REFINERY).amount < 1' to if statement. 
+            #Loop stops aftter refinery gets built.
+            self.combinedActions.append(ws.move(proxy_location))
+            pass
+
 
     async def build_depot(self):
+        ws = self.units(SCV).find_by_tag(self.proxy_worker_tag_depot)
         if self.can_afford(SUPPLYDEPOT) and not self.already_pending(SUPPLYDEPOT) and self.supply_left < 4:
-            ws = self.workers.gathering
-            if ws:
-                w = ws.furthest_to(ws.center)
-                loc = await self.find_placement(SUPPLYDEPOT, w.position, placement_step=10)
-                if loc:
-                    self.combinedActions.append(w.build(SUPPLYDEPOT, loc))
+            loc = await self.find_placement(SUPPLYDEPOT, ws.position)
+            self.combinedActions.append(ws.build(SUPPLYDEPOT, loc))
 
     async def build_rax(self):
         """Builds proxy rax in a location near the opponent."""
@@ -54,8 +62,15 @@ class ProxyReaperBot(sc2.BotAI):
                 #The second parameter in towards method dictates how close to the game center the building is placed.
                 # A 1 builds the rax as close to the center as possible.
                 # A 90 will build as close to the enemy base as possible.
-                pos = await self.find_placement(BARRACKS, near=self.game_info.map_center.towards(self.enemy_start_locations[0], 22))
+                pos = await self.find_placement(BARRACKS, near=self.game_info.map_center.towards(self.enemy_start_locations[0], 25))
                 self.combinedActions.append(proxy_worker.build(BARRACKS, pos))
+
+            #2nd rax gets built by scv that finished building the supply depot. Currently does not build 2nd rax
+            if self.can_afford(BARRACKS) and self.units(BARRACKS).amount >= 1:
+                proxy_worker2 = self.units(SCV).find_by_tag(self.proxy_worker_tag_depot)
+                pos = await self.find_placement(BARRACKS, near=self.game_info.map_center.towards(self.enemy_start_locations[0], 25))
+                self.combinedActions.append(proxy_worker2.build(BARRACKS, pos))
+
                     
     async def build_gas(self):
         """Builds refineries for gas collection."""
@@ -64,27 +79,17 @@ class ProxyReaperBot(sc2.BotAI):
                 gas = self.state.vespene_geyser.closer_than(15.0, cc)
                 for gas in gas:
                     if self.can_afford(REFINERY) and not self.already_pending(REFINERY) and self.units(REFINERY).amount < 1:
-                        worker = self.select_build_worker(gas.position)
-                        self.combinedActions.append(worker.build(REFINERY, gas))           
+                        ws = self.workers.gathering
+                        if ws:
+                            w = ws.furthest_to(ws.center)
+                            #worker = self.select_build_worker(gas.position)
+                            self.combinedActions.append(w.build(REFINERY, gas))           
 
 
                 #Issue - when scv finishes making depot, scv needs to be sent to first rax location to build a 2nd rax. 
                 #Issue - Start gas as soon as the rax starts.
                 #Issue - SCV Production is not constant, but required.
     
-
-
-
-
-#[4:05 PM] BuRny: @EJK you need to store the worker tag, move the worker to proxy location, and once you have the money, restore the unit from the tag
-#[4:07 PM] BuRny: e.g. 
-#if iteration == 0:
-    #proxy_worker = self.workers.random
-    # move worker to proxy location
-    #self.proxy_worker_tag = proxy_worker.tag
-# once you can afford it:
-#proxy_worker = self.units.find_by_tag(self.proxy_worker_tag)
-# build your barracks
 
 
 
@@ -260,3 +265,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
