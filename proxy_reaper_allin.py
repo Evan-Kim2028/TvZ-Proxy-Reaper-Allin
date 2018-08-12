@@ -165,6 +165,7 @@ class ProxyReaperBot(sc2.BotAI):
                     pass
 
 
+    #Vector calculation
     def np_array(self, location, enemy_location):
         x1 = np.array(location)
         x2 = np.array(enemy_location)
