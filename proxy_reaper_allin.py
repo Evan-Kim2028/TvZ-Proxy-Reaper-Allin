@@ -38,6 +38,7 @@ class ProxyReaperBot(sc2.BotAI):
         await self.do_actions(self.combinedActions)
         self.combinedActions = []
 
+
     async def move_scv(self):
         if not self.already_pending(BARRACKS) and not self.units(SUPPLYDEPOT).amount >= 1:
             proxy_location = self.game_info.map_center.towards(self.enemy_start_locations[0], 30)
@@ -144,11 +145,17 @@ class ProxyReaperBot(sc2.BotAI):
         for r in self.units(REAPER):
             allEnemyGroundUnits = self.known_enemy_units.not_flying.not_structure.exclude_type([ADEPTPHASESHIFT, DISRUPTORPHASED, EGG, LARVA])
             if allEnemyGroundUnits.exists:
+                #enemy unit location
                 closestEnemy = allEnemyGroundUnits.closest_to(r)
+                #2nd variable for np_array function
+                enemy_loc = closestEnemy.position
                 self.combinedActions.append(r.attack(closestEnemy))
                 pass
                 if r.position.distance_to(closestEnemy) <= 5:
-                    retreat_location = self.game_info.map_center.towards(self.enemy_start_locations[0], 30)
+                    #1st variable for np_array function
+                    loc = r.position
+                    retreat_array = self.np_array(loc, enemy_loc)
+                    retreat_location = Point2(tuple(retreat_array))
                     self.combinedActions.append(r.move(retreat_location))
                     pass
             else:
@@ -156,6 +163,17 @@ class ProxyReaperBot(sc2.BotAI):
                     retreat_location = self.game_info.map_center.towards(self.enemy_start_locations[0], 30)
                     self.combinedActions.append(r.move(retreat_location))
                     pass
+
+
+    def np_array(self, location, enemy_location):
+        x1 = np.array(location)
+        x2 = np.array(enemy_location)
+        x_sub = np.subtract(x1,x2)
+        x_added = np.add(x_sub, x1)
+        return x_added
+
+
+
 
 
 #Issue1 - I only have 1 retreat direction. Therefore reapers will retreat the same way they came from.
