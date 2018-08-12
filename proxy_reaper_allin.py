@@ -1,4 +1,5 @@
 import random
+import numpy as np
 
 import sc2
 from sc2 import Race, Difficulty
@@ -31,6 +32,7 @@ class ProxyReaperBot(sc2.BotAI):
         await self.build_scv()
         await self.rax_production()
         await self.upgrade_to_oc()
+        await self.scout()
         await self.reaper_attack()
         print(self.combinedActions)
         await self.do_actions(self.combinedActions)
@@ -115,7 +117,8 @@ class ProxyReaperBot(sc2.BotAI):
 
     async def rax_production(self):
         for rax in self.units(BARRACKS).ready.noqueue:
-            if self.can_afford(REAPER) and not self.already_pending(REAPER):
+#           Limited reaper production to 1 reaper for vector testing purposes.            
+            if self.can_afford(REAPER) and not self.already_pending(REAPER) and self.units(REAPER).amount < 1:
                 self.combinedActions.append(rax.train(REAPER))
 
     async def upgrade_to_oc(self):
@@ -132,25 +135,32 @@ class ProxyReaperBot(sc2.BotAI):
                 mf = self.state.mineral_field.closest_to(oc)
                 self.combinedActions.append(oc(CALLDOWNMULE_CALLDOWNMULE, mf))
 
+    async def scout(self):
+        for r in self.units(REAPER):
+            self.combinedActions.append(r.move(random.choice(self.enemy_start_locations)))
+            pass
 
     async def reaper_attack(self):
         for r in self.units(REAPER):
-            allEnemyGroundUnits = self.known_enemy_units.not_flying.not_structure
-#            self.combinedActions.append(r.move(random.choice(self.enemy_start_locations)))
-#            pass
-            #added .not_structure to filter out structures
-#            allEnemyGroundUnits = self.known_enemy_units.not_flying.not_structure
+            allEnemyGroundUnits = self.known_enemy_units.not_flying.not_structure.exclude_type([ADEPTPHASESHIFT, DISRUPTORPHASED, EGG, LARVA])
             if allEnemyGroundUnits.exists:
                 closestEnemy = allEnemyGroundUnits.closest_to(r)
                 self.combinedActions.append(r.attack(closestEnemy))
-                if r.position.distance_to(closestEnemy) <= 5:
-                    if r.health_percentage < 40/60:
-                        self.combinedActions.append(r.move(self.units(BARRACKS)[0]))
-                        pass
-            else:
-                self.combinedActions.append(r.move(random.choice(self.enemy_start_locations)))
                 pass
+                if r.position.distance_to(closestEnemy) <= 5:
+                    retreat_location = self.game_info.map_center.towards(self.enemy_start_locations[0], 30)
+                    self.combinedActions.append(r.move(retreat_location))
+                    pass
+            else:
+                if r.health <= 30/60:
+                    retreat_location = self.game_info.map_center.towards(self.enemy_start_locations[0], 30)
+                    self.combinedActions.append(r.move(retreat_location))
+                    pass
 
+
+#Issue1 - I only have 1 retreat direction. Therefore reapers will retreat the same way they came from.
+#Issue2 - Reapers don't recognize cliffs and will bug out and constantly jump up and down sometimes.
+#Issue3 - Reaper attacks the queeen, but doesn't retreat and ends up dying.
 
 
 
@@ -327,7 +337,7 @@ def main():
     # Multiple difficulties for enemy bots available https://github.com/Blizzard/s2client-api/blob/ce2b3c5ac5d0c85ede96cef38ee7ee55714eeb2f/include/sc2api/sc2_gametypes.h#L30
     sc2.run_game(sc2.maps.get("(2)CatalystLE"), [
         Bot(Race.Terran, ProxyReaperBot()),
-        Computer(Race.Zerg, Difficulty.Medium)
+        Computer(Race.Zerg, Difficulty.CheatMoney)
     ], realtime=False)
 
 if __name__ == '__main__':
