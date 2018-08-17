@@ -32,7 +32,7 @@ class ProxyReaperBot(sc2.BotAI):
         await self.build_scv()
         await self.rax_production()
         await self.upgrade_to_oc()
-        await self.scout()
+#        await self.reaper_retreat()
         await self.reaper_attack()
         print(self.combinedActions)
         await self.do_actions(self.combinedActions)
@@ -119,7 +119,7 @@ class ProxyReaperBot(sc2.BotAI):
     async def rax_production(self):
         for rax in self.units(BARRACKS).ready.noqueue:
 #           Limited reaper production to 1 reaper for vector testing purposes.            
-            if self.can_afford(REAPER) and not self.already_pending(REAPER) and self.units(REAPER).amount < 1:
+            if self.can_afford(REAPER) and not self.already_pending(REAPER): #and self.units(REAPER).amount < 1:
                 self.combinedActions.append(rax.train(REAPER))
 
     async def upgrade_to_oc(self):
@@ -136,92 +136,84 @@ class ProxyReaperBot(sc2.BotAI):
                 mf = self.state.mineral_field.closest_to(oc)
                 self.combinedActions.append(oc(CALLDOWNMULE_CALLDOWNMULE, mf))
 
-    async def scout(self):
+    def find_enemy_locs(self):
+        """Returns enemy unit location of nearest enemy as highest_priority_locs."""
+        enemy = self.known_enemy_units.not_flying.exclude_type([ADEPTPHASESHIFT, DISRUPTORPHASED, EGG, LARVA])
         for r in self.units(REAPER):
-            self.combinedActions.append(r.move(random.choice(self.enemy_start_locations)))
-            pass
-
-    async def reaper_attack(self):
-        for r in self.units(REAPER):
-            allEnemyGroundUnits = self.known_enemy_units.not_flying.not_structure.exclude_type([ADEPTPHASESHIFT, DISRUPTORPHASED, EGG, LARVA])
-            if allEnemyGroundUnits.exists:
-                #enemy unit location
-                closestEnemy = allEnemyGroundUnits.closest_to(r)
-                #2nd variable for np_array function
-                enemy_loc = closestEnemy.position
-                self.combinedActions.append(r.attack(closestEnemy))
-                pass
-                if r.position.distance_to(closestEnemy) <= 5:
-                    #1st variable for np_array function
-                    loc = r.position
-                    retreat_array = self.np_array(loc, enemy_loc)
-                    retreat_location = Point2(tuple(retreat_array))
-                    self.combinedActions.append(r.move(retreat_location))
-                    pass
+            if enemy.not_structure.exists:
+                highest_priority = enemy.not_structure.closest_to(r)
+                #Position of highest_priority units
+                highest_priority_locs = highest_priority.position
+                return highest_priority_locs
             else:
-                if r.health <= 30/60:
-                    retreat_location = self.game_info.map_center.towards(self.enemy_start_locations[0], 30)
-                    self.combinedActions.append(r.move(retreat_location))
-                    pass
-
+                pass
 
     #Vector calculation
-    def np_array(self, location, enemy_location):
-        x1 = np.array(location)
-        x2 = np.array(enemy_location)
+    def find_move_vec(self, unit_locs, *args):
+        """Finds movement vector for reaper."""
+        friendly_unit_locs = np.array(unit_locs)
+        enemy_locs = np.array([0,0])
+        for locs in args:
+            #feeds in empty array if not recieving any *args inputs to prevent crashing
+            vec_args = np.array([0,0])
+            vec_args = np.array(locs)
+            try:
+                vec_args = np.subtract(vec_args, friendly_unit_locs)
+                #vec_args = np.add(vec_args, -friendly_unit_locs)
+            except TypeError:
+                print("Crashing here")
+            #find vector length before normalizing.
+            vec_len = np.sqrt(vec_args[0] ** 2 + vec_args[1] ** 2)
+            norm_vec = np.divide(vec_args, vec_len)  
+            enemy_locs = np.add(enemy_locs, norm_vec) 
+            #added a /2 at the end of enemy_locs
+        move_vec = friendly_unit_locs - (enemy_locs)/2
+        return move_vec
+
+
+    def reaper_aggressive_kite(self, loc, enemy_loc, proxy_anchor_loc):
+        x1 = np.array(loc)
+        x2 = np.array(enemy_loc)
+        #adding proxy_anchor_loc, might need to subtract instead of add
+        x3 = np.array(proxy_anchor_loc)
+        x1 = (np.add(loc, x3))/2
         x_sub = np.subtract(x1,x2)
-        x_added = np.add(x_sub, x1)
-        return x_added
+        x_added2 = np.add(x_sub, x1)
+        return x_added2
 
-
-
-
-
-#Issue1 - I only have 1 retreat direction. Therefore reapers will retreat the same way they came from.
-#Issue2 - Reapers don't recognize cliffs and will bug out and constantly jump up and down sometimes.
-#Issue3 - Reaper attacks the queeen, but doesn't retreat and ends up dying.
-
-
-
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#ISSUE - Reaper doesn't retreat vs queen (higher range)
+#Issue - Sometimes reaper ignores closer enemy units
+#Issue - Reaper doesn't retreat when hp is low (prioritize this so if mistakes are made, it can recover)
+    async def reaper_attack(self):
+        """Simple attack function that will let the reaper attack closest enemy. Does not distinguish between different types of units."""
+        for r in self.units(REAPER):
+            enemy = self.known_enemy_units.not_flying.exclude_type([ADEPTPHASESHIFT, DISRUPTORPHASED, EGG, LARVA])
+            #enemy_struct = self.known_enemy_units.not_flying.exclude_type([ADEPTPHASESHIFT, DISRUPTORPHASED, EGG, LARVA])
+            if enemy.not_structure.exists:
+                if r.health_percentage > 50/60:
+                    print("good to go, you have enough HP to attack")
+                    closest_enemy = enemy.not_structure.closest_to(r)
+                    self.combinedActions.append(r.attack(closest_enemy))
+                    pass
+                    if r.weapon_cooldown != 0:
+                        if r.position.distance_to(closest_enemy) < 5:
+                            reaper_loc = r.position
+                            enemy_loc = self.find_enemy_locs()
+                            for rax in self.units(BARRACKS):
+                                proxy_loc = rax.position
+                            retreat_vec = self.reaper_aggressive_kite(reaper_loc, enemy_loc, proxy_loc)
+                            retreat_loc = Point2(tuple(retreat_vec))
+                            self.combinedActions.append(r.move(retreat_loc))
+                            #copy paste reaper_retreat functions
+                elif r.health_percentage < 40/60:
+                    print("too weak to fight move back to proxy location to heal")
+                    proxy_loc = self.game_info.map_center.towards(self.start_location).position
+                    self.combinedActions.append(r.move(proxy_loc))
+                    pass
+            else:
+                print("ONLY SUPPOSED TO SCOUT IN BEGINNING OF GAME")
+                self.combinedActions.append(r.move((self.enemy_start_locations)[0]))
+                pass
 
 # helper functions
 
@@ -231,6 +223,7 @@ class ProxyReaperBot(sc2.BotAI):
         assert isinstance(pos, (Point2, Point3, Unit))
         pos = pos.position.to2.rounded
         return self._game_info.pathing_grid[(pos)] != 0
+        self._game_info.playable_area[(retreat_location)]
 
     # stolen and modified from position.py
     def neighbors4(self, position, distance=1):
@@ -356,7 +349,7 @@ def main():
     # Multiple difficulties for enemy bots available https://github.com/Blizzard/s2client-api/blob/ce2b3c5ac5d0c85ede96cef38ee7ee55714eeb2f/include/sc2api/sc2_gametypes.h#L30
     sc2.run_game(sc2.maps.get("(2)CatalystLE"), [
         Bot(Race.Terran, ProxyReaperBot()),
-        Computer(Race.Zerg, Difficulty.CheatMoney)
+        Computer(Race.Zerg, Difficulty.CheatVision)
     ], realtime=False)
 
 if __name__ == '__main__':
