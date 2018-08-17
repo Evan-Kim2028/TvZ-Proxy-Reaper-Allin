@@ -53,7 +53,7 @@ class ProxyReaperBot(sc2.BotAI):
             #Loop behavior stops aftter refinery gets built.
             self.combinedActions.append(ws.move(proxy_location))
             pass
-
+            
     async def build_depot(self):
         ws = self.units(SCV).find_by_tag(self.proxy_worker_tag_depot)
         if self.can_afford(SUPPLYDEPOT) and not self.already_pending(SUPPLYDEPOT) and self.supply_left < 5:
